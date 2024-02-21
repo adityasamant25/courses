@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rest-client
+  labels:
+    app: rest-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rest-client
+  template:
+    metadata:
+      labels:
+        app: rest-client
+        version: v1
+    spec:
+      containers:
+        - image: adityasamantlearnings/rest-client:1.0
+          imagePullPolicy: Always
+          name: rest-client
+          ports:
+            - containerPort: 8082
+          env:
+            - name: CUSTOMER_SERVICE_URL
+              value: 'http://customers:8081'
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: rest-client
+  labels:
+    app: rest-client
+spec:
+  selector:
+    app: rest-client
+  ports:
+    - port: 8082
+      name: http
+      targetPort: 8082
