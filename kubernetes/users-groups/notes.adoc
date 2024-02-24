@@ -446,7 +446,7 @@ Well, at the end of any lab, it's always good to clean up the resources which yo
 
 [,console]
 ----
-kubectl config use-context minikube
+kubectl config delete-context minikube
 rm jane*
 rm poweruser*
 kubectl delete pod nginx
