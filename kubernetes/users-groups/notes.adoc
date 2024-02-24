@@ -1,0 +1,468 @@
+= Show Notes for Users, Groups, Roles and API Access in Kubernetes
+:toc: left
+
+== Useful Links
+
+. https://kubernetes.io/docs/tasks/tools/#kubectl[kubectl]
+
+. https://minikube.sigs.k8s.io/docs/start/[minikube]
+
+. https://github.com/openssl/openssl?tab=readme-ov-file#download[OpenSSL]
+
+. https://kubernetes.io/docs/reference/access-authn-authz/rbac/[RBAC] - Kubernetes Documentation
+
+== Useful Commands
+
+=== Prerequisites
+.Verify kubectl installation
+[,console]
+----
+kubectl version --client
+----
+
+.Verify minukube installation
+[,console]
+----
+minikube version
+----
+
+.Verify openssl installation
+[,console]
+----
+openssl version
+----
+
+
+=== Minikube Startup
+.Start a new minikube cluster
+[,console]
+----
+minikube start
+----
+
+=== Default Admin User
+.kubectl get context
+[,console]
+----
+kubectl config get-contexts minikube
+----
+
+.Fetch the entry of the admin user that is created with our basic minikube installation
+[,console]
+----
+kubectl config view -o jsonpath='{.contexts[?(@.name=="minikube")].context.user}'
+----
+
+.Check the x509 certificate of the minikube user
+[,console]
+----
+kubectl config view -o jsonpath='{.users[?(@.name=="minikube")].user.client-certificate}'
+----
+
+.Sample location of the x509 certificate belonging to the minikube user.
+[,console]
+----
+/Users/adityasamant/.minikube/profiles/minikube/client.crt
+----
+
+.View the details of the certificate using openssl
+[,console]
+----
+openssl x509 -in /Users/adityasamant/.minikube/profiles/minikube/client.crt -text -noout
+----
+
+.Output just the details of the `Subject` field
+[,console]
+----
+openssl x509 -in /Users/adityasamant/.minikube/profiles/minikube/client.crt -text -noout | grep Subject | grep -v "Public Key Info"
+----
+
+.Check permissions to create pods
+[,console]
+----
+kubectl auth can-i create pods
+----
+
+.Check permissions to create deployments
+[,console]
+----
+kubectl auth can-i create deployments
+----
+
+.Check permissions to delete secrets
+[,console]
+----
+kubectl auth can-i delete secrets
+----
+
+=== New non-admin user
+
+.openssl command to issue a private key
+[,console]
+----
+openssl genrsa -out jane.key 2048
+----
+
+.openssl command to issue a certificate
+[,console]
+----
+openssl req -new -key jane.key -out jane.csr -subj "/CN=jane"
+----
+
+
+.Fetch the base64 encoded value of the CSR file content without any line breaks
+[,console]
+----
+cat jane.csr | base64 | tr -d "\n"
+----
+
+.Template manifest to create a CSR
+[,yaml]
+----
+cat <<EOF | kubectl apply -f -
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: csr-name <1>
+spec:
+  request: base64 encoded csr <2>
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 86400  # one day
+  usages:
+  - client auth
+EOF
+----
+<1> Name of the CSR
+<2> The base64 encoded content of the CSR
+
+.View the CSR
+[,console]
+----
+kubectl get csr jane
+----
+
+.Approve the CSR
+[,console]
+----
+kubectl certificate approve jane
+----
+
+
+=== Granting permissions via RBAC
+
+.Create a `ClusterRole` that grants permissions to only create pods.
+[,console]
+----
+kubectl create clusterrole createpods --verb=create --resource=pods
+----
+
+.Create a `ClusterRoleBinding` to bind the `clusterrole` with the user `jane`
+[,console]
+----
+kubectl create clusterrolebinding createpods --clusterrole=createpods --user=jane
+----
+
+.Find the full list of options in `kubectl`
+[,console]
+----
+kubectl options
+----
+
+.Check permissions to create pods using --as
+[,console]
+----
+kubectl auth can-i create pods --as=jane
+----
+
+.Check permissions to create deployments using --as
+[,console]
+----
+kubectl auth can-i create deployments --as=jane
+----
+
+.Check permissions to delete secrets using --as
+[,console]
+----
+kubectl auth can-i delete secrets --as=jane
+----
+
+.Check permissions to create pods using --user
+[,console]
+----
+kubectl auth can-i create pods --user=jane
+----
+
+.Fetch the certificate for the user `jane` and store it in a file named jane.crt
+[,console]
+----
+kubectl get csr jane -o jsonpath='{.status.certificate}'| base64 -d > jane.crt
+----
+
+.Add the new credentials to the `kubeconfig` file
+[,console]
+----
+kubectl config set-credentials jane --client-key=jane.key --client-certificate=jane.crt --embed-certs=true
+----
+
+.Associate the user `jane` with the `minikube` cluster by setting a new context for it
+[,console]
+----
+kubectl config set-context jane --cluster=minikube --user=jane
+----
+
+.Check permissions to create deployments using --user
+[,console]
+----
+kubectl auth can-i create deployments --user=jane
+----
+
+.Check permissions to delete secrets using --user
+[,console]
+----
+kubectl auth can-i delete secrets --user=jane
+----
+
+.Check permissions for a non-existent user
+[,console]
+----
+kubectl auth can-i create pods --as=nobody
+----
+
+=== Custom Admin User
+
+.Create a private key using openssl
+[,console]
+----
+openssl genrsa -out poweruser.key 2048
+----
+
+.Create a CSR using openssl allocation a user to system:masters group
+[,console]
+----
+openssl req -new -key poweruser.key -out poweruser.csr -subj "/CN=poweruser/O=system:masters"
+----
+
+.Get the base64 encoded value of the CSR without any line breaks
+[,console]
+----
+cat poweruser.csr | base64 | tr -d "\n"
+----
+
+.Template to create the CSR
+[,yaml]
+----
+cat <<EOF | kubectl apply -f -
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: csr-name
+spec:
+  request: base64 encoded csr
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 86400  # one day
+  usages:
+  - client auth
+EOF
+----
+
+.Create a new `clusterrolebinding` that attaches the group named `example:masters` to the `clusterrole` called `cluster-admin`.
+
+[,yaml]
+----
+cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: example-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: example:masters
+EOF
+----
+
+.Delete the previous set of key and CSR files created for the `poweruser`
+[,console]
+----
+rm poweruser.key poweruser.csr
+----
+
+.Create a new pair of key and CSR file, this time attaching the `poweruser` to the `example:masters` group.
+[,console]
+----
+openssl genrsa -out poweruser.key 2048
+----
+[,console]
+----
+openssl req -new -key poweruser.key -out poweruser.csr -subj "/CN=poweruser/O=example:masters"
+----
+
+.Get the base64 encoded value of the CSR without any line breaks
+[,console]
+----
+cat poweruser.csr | base64 | tr -d "\n"
+----
+
+.Template for creating a CSR
+[,console]
+----
+cat <<EOF | kubectl apply -f -
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: csr-name
+spec:
+  request: base64 encoded csr
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 86400  # one day
+  usages:
+  - client auth
+EOF
+----
+
+.Approve the CSR
+[,console]
+----
+kubectl certificate approve poweruser
+----
+
+.Fetch the certificate generated for the `poweruser`
+[,console]
+----
+kubectl get csr poweruser -o jsonpath='{.status.certificate}'| base64 -d > poweruser.crt
+----
+
+.Verify the Subject field of the certificate to confirm that the user is indeed attached to the `example:masters` group
+[,console]
+----
+openssl x509 -in poweruser.crt -text -noout | grep Subject | grep -v "Public Key Info"
+----
+
+.Add the credentials of the `poweruser` to the `kubeconfig` file:
+[,console]
+----
+kubectl config set-credentials poweruser --client-key=poweruser.key --client-certificate=poweruser.crt --embed-certs=true
+----
+
+.Associate the `poweruser` with the `minikube` cluster by setting a new context for it:
+[,console]
+----
+kubectl config set-context poweruser --cluster=minikube --user=poweruser
+----
+
+.Validate the permissions on the `poweruser` by using the `--user` option:
+[,console]
+----
+kubectl auth can-i create pods --user=poweruser
+----
+
+[,console]
+----
+kubectl auth can-i create deployments --user=poweruser
+----
+
+[,console]
+----
+kubectl auth can-i delete secrets --user=poweruser
+----
+
+.Try the same commands but this time using the `--as` option:
+
+[,console]
+----
+kubectl auth can-i create pods --as=poweruser
+----
+
+[,console]
+----
+kubectl auth can-i create deployments --as=poweruser
+----
+
+[,console]
+----
+kubectl auth can-i delete secrets --as=poweruser
+----
+
+.Switch the `kubectl` context to work with the `poweruser` instead of the default `minikube-user`
+[,console]
+----
+kubectl config use-context poweruser
+----
+
+.Create a `nginx` pod:
+[,console]
+----
+kubectl run nginx --image=nginx
+----
+
+.Create a deployment for `nginx`:
+[,console]
+----
+kubectl create deployment nginx-deploy --image=nginx
+----
+
+.Create a secret and then delete it:
+[,console]
+----
+kubectl create secret generic test-secret --from-literal=secret=1234
+----
+
+[,console]
+----
+kubectl delete secrets test-secret
+----
+
+.Check permissions by using the `--as-group` option
+
+[,console]
+----
+kubectl auth can-i create pods --as=poweruser --as-group=example:masters
+----
+
+[,console]
+----
+kubectl auth can-i create deployments --as=poweruser --as-group=example:masters
+----
+
+[,console]
+----
+kubectl auth can-i delete secrets --as=poweruser --as-group=example:masters
+----
+
+.Example of the --as-group option used without the --as option, resulting in an error
+[,console]
+----
+kubectl auth can-i create pods --as-group=example:masters
+----
+
+
+== Cleanup
+
+Well, at the end of any lab, it's always good to clean up the resources which you may no longer be need.
+
+[,console]
+----
+kubectl config use-context minikube
+rm jane*
+rm poweruser*
+kubectl delete pod nginx
+kubectl delete deployment nginx-deploy
+kubectl delete clusterrolebinding createpods
+kubectl delete clusterrole createpods
+kubectl delete clusterrolebinding example-cluster-admin
+kubectl config delete-context poweruser
+kubectl config delete-context jane
+kubectl config delete-user poweruser
+kubectl config delete-user jane
+----
+
+Optionally, you can delete the entire minikube cluster as well.
+
+[,comsole]
+----
+minikube delete -p minikube
+----
