@@ -593,25 +593,15 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 apiVersion: certificates.k8s.io/v1
 kind: CertificateSigningRequest
 metadata:
-  name: csr-name <b class="conum">(1)</b>
+  name: csr-name
 spec:
-  request: base64 encoded csr <b class="conum">(2)</b>
+  request: base64 encoded csr
   signerName: kubernetes.io/kube-apiserver-client
   expirationSeconds: 86400  # one day
   usages:
   - client auth
 EOF</code></pre>
 </div>
-</div>
-<div class="colist arabic">
-<ol>
-<li>
-<p>Name of the CSR</p>
-</li>
-<li>
-<p>The base64 encoded content of the CSR</p>
-</li>
-</ol>
 </div>
 <div class="listingblock">
 <div class="title">View the CSR</div>
@@ -954,7 +944,7 @@ kubectl config delete-user jane</code></pre>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2024-02-24 09:51:54 +0530
+Last updated 2024-02-24 11:10:53 +0530
 </div>
 </div>
 </body>

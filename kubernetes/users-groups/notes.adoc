@@ -117,23 +117,21 @@ cat jane.csr | base64 | tr -d "\n"
 ----
 
 .Template manifest to create a CSR
-[,yaml]
+[,yaml,line-comment=%]
 ----
 cat <<EOF | kubectl apply -f -
 apiVersion: certificates.k8s.io/v1
 kind: CertificateSigningRequest
 metadata:
-  name: csr-name <1>
+  name: csr-name
 spec:
-  request: base64 encoded csr <2>
+  request: base64 encoded csr
   signerName: kubernetes.io/kube-apiserver-client
   expirationSeconds: 86400  # one day
   usages:
   - client auth
 EOF
 ----
-<1> Name of the CSR
-<2> The base64 encoded content of the CSR
 
 .View the CSR
 [,console]
