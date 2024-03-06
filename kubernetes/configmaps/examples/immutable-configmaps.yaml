@@ -1,0 +1,7 @@
+apiVersion: v1
+data:
+  season: "summer"
+kind: ConfigMap
+immutable: true
+metadata:
+  name: season
