@@ -1,0 +1,97 @@
+= Notes for Traffic Management - Basic Routing
+:toc: left
+
+.Deployment manifest for customers application
+[,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: customers
+  name: customers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customers
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: customers
+    spec:
+      containers:
+        - image: adityasamantlearnings/customers:0.8
+          name: customers
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: customers
+  name: customers
+spec:
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: 8081
+  selector:
+    app: customers
+----
+
+.Command to create the sleeper pod (within the istio package)
+[,console]
+----
+kubectl apply -f samples/sleep/sleep.yaml
+----
+
+.Access the customers application from within the sleeper pod
+[,console]
+----
+k exec sleep-7656cf8794-zrb2c -c sleep -- curl -s http://customers:8081/api/customers
+----
+
+.Manifest for the Gateway resource
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: customers-gateway
+  namespace: default
+spec:
+  selector:
+    app: istio-ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+----
+
+.Manifest for the VirtualService resource
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers-vs
+spec:
+  gateways:
+    - customers-gateway
+  hosts:
+    - "*"
+  http:
+    - name: "customers-route"
+      route:
+        - destination:
+            host: customers
+----
+
+
+
