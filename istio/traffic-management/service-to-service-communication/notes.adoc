@@ -1,0 +1,91 @@
+= Notes for Traffic Management - Service to Service Communication
+
+.Deployment manifest for rest-client
+[,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: rest-client
+  name: rest-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rest-client
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: rest-client
+    spec:
+      containers:
+        - image: adityasamantlearnings/rest-client:1.0
+          name: rest-client
+          env:
+            - name: CUSTOMER_SERVICE_URL
+              value: "http://customers:8081"
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rest-client
+  name: rest-client
+spec:
+  ports:
+    - port: 8082
+      protocol: TCP
+      targetPort: 8082
+  selector:
+    app: rest-client
+----
+
+.Command to invoke the rest-client from within the sleeper pod
+[,console]
+----
+k exec sleep-7656cf8794-l4zcb -c sleep -- curl -s http://rest-client:8082/api/customers
+----
+
+.Manifest for the rest-client Gateway
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: rest-client-gateway
+  namespace: default
+spec:
+  selector:
+    app: istio-ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "127.0.0.1"
+----
+
+.Manifest for the rest-client VirtualService
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: rest-client-vs
+spec:
+  gateways:
+    - rest-client-gateway
+  hosts:
+    - "127.0.0.1"
+  http:
+    - name: "rest-client-route"
+      route:
+        - destination:
+            host: rest-client
+----
+
