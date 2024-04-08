@@ -1,0 +1,46 @@
+= Notes for Traffic Management - Routing Rules
+
+.Virtual Service definition for routing based on headers
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers-vs-v1
+spec:
+  hosts:
+    - customers
+  http:
+    - match:
+        - headers:
+            user:
+              exact: adam
+      route:
+        - destination:
+            host: customers
+            subset: v2
+    - route:
+        - destination:
+            host: customers
+            subset: v1
+----
+
+.Command to invoke the HTTP request passing the `user` header with value `adam`
+[,comsole]
+----
+curl -H "user: adam" http://127.0.0.1/api/customers
+----
+
+.Command to invoke the HTTP request passing the `user` header with value `eve`
+[,comsole]
+----
+curl -H "user: eve" http://127.0.0.1/api/customers
+----
+
+.Command to invoke the HTTP request without headers
+[,console]
+----
+curl http://127.0.0.1/api/customers
+----
+
+Link to the HTTPMatchRequest documentation is present https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest[here].
