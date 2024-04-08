@@ -1,0 +1,109 @@
+= Notes for Traffic Management - Multiple App Versions
+
+.Deployment manifest for customers v1
+[,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: customers
+    version: v1
+  name: customers-v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customers
+      version: v1
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: customers
+        version: v1
+    spec:
+      containers:
+        - image: adityasamantlearnings/customers:0.8
+          name: customers
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: customers
+  name: customers
+spec:
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: 8081
+  selector:
+    app: customers
+----
+
+.Deployment manifest for customers v2
+[,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: customers
+    version: v2
+  name: customers-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customers
+      version: v2
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: customers
+        version: v2
+    spec:
+      containers:
+        - image: adityasamantlearnings/customers:0.9
+          name: customers
+----
+
+.Destination rule for customers
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: customers
+spec:
+  host: customers
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+----
+
+.Virtual Service directing all traffic to v1
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers-vs-v1
+spec:
+  hosts:
+    - customers
+  http:
+    - name: "customers-route"
+      route:
+        - destination:
+            host: customers
+            subset: v1
+----
