@@ -1,0 +1,65 @@
+= Notes for Traffic Management - Fault Injection (Delay)
+
+.Virtual Service manifest injecting a delay fault of 5 seconds for 100% of requests to v2
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers-fault
+spec:
+  hosts:
+    - customers
+  http:
+    - match:
+        - headers:
+            user:
+              exact: adam
+      route:
+        - destination:
+            host: customers
+            subset: v2
+      fault:
+        delay:
+          fixedDelay: 5s
+          percentage:
+            value: 100
+    - route:
+        - destination:
+            host: customers
+            subset: v1
+----
+
+.Accessing the API by passing the header named user with the value as adam
+[,console]
+----
+curl -w "\n* Response time: %{time_total}s\n" -H "user: adam" http://127.0.0.1/api/customers
+----
+
+.Accessing the API by passing the header named user with the value as eve
+[,console]
+----
+curl -w "\n* Response time: %{time_total}s\n" -H "user: eve" http://127.0.0.1/api/customers
+----
+
+.Accessing the API without any custom header
+[,console]
+----
+curl -w "\n* Response time: %{time_total}s\n" http://127.0.0.1/api/customers
+----
+
+.Trigger 5 requests in a loop for each scenario
+[,bash]
+----
+#!/usr/bin/env bash
+for i in $(seq 1 5); do curl -s -H "user: adam" "http://$GATEWAY_URL/api/customers"; echo -e '\n'; done
+for i in $(seq 1 5); do curl -s -H "user: eve" "http://$GATEWAY_URL/api/customers"; echo -e '\n'; done
+for i in $(seq 1 5); do curl -s "http://$GATEWAY_URL/api/customers"; echo -e '\n'; done
+----
+
+.Trigger 20 requests with the value adam in the custom header
+[,bash]
+----
+#!/usr/bin/env bash
+for i in $(seq 1 20); do curl -w "\n* Response time: %{time_total}s\n" -s -H "user: adam" "http://$GATEWAY_URL/api/customers"; echo -e '\n'; done
+----
