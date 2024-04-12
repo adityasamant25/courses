@@ -1,0 +1,68 @@
+= Notes for Traffic Management - Fault Injection (Abort)
+
+.Basic routing without any abort fault
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers-fault-abort
+spec:
+  hosts:
+    - customers
+  http:
+    - match:
+        - headers:
+            user:
+              exact: adam
+      route:
+        - destination:
+            host: customers
+            subset: v2
+    - route:
+        - destination:
+            host: customers
+            subset: v1
+----
+
+.Request without any custom header, output contains response code
+[,console]
+----
+curl -w "\n* Response code: %{http_code}\n" http://127.0.0.1/api/customers
+----
+
+.Request with user as adam, output contains response code
+[,console]
+----
+curl -H "user: adam" -w "\n* Response code: %{http_code}\n" http://127.0.0.1/api/customers
+----
+
+.VirtualService with a fault of type abort when user = adam
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers-fault-abort
+spec:
+  hosts:
+    - customers
+  http:
+    - match:
+        - headers:
+            user:
+              exact: adam
+      route:
+        - destination:
+            host: customers
+            subset: v2
+      fault:
+        abort:
+          httpStatus: 500
+          percentage:
+            value: 100
+    - route:
+        - destination:
+            host: customers
+            subset: v1
+----
