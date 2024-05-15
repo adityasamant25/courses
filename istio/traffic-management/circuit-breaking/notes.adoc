@@ -1,0 +1,187 @@
+= Notes for Traffic Management - Circuit Breaking
+:toc: left
+
+.Location of the images on DockerHub
+https://hub.docker.com/repository/docker/adityasamantlearnings/springboot-customers-basic/general
+
+.Deployment and service for the healthy microservice
+[,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: customers
+    version: v2
+  name: customers-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customers
+      version: v2
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: customers
+        version: v2
+    spec:
+      containers:
+        - image: adityasamantlearnings/springboot-customers-basic:0.0.3
+          name: customers
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: customers
+  name: customers
+spec:
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: 8081
+  selector:
+    app: customers
+----
+
+.Destination rule with circuit breaking properties
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: customers
+spec:
+  host: customers
+  trafficPolicy:
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 1
+        maxRequestsPerConnection: 1
+  subsets:
+    - name: default
+      labels:
+        version: v2
+----
+
+.Istio Documentation for Circuit Breaking properties:
+https://istio.io/latest/docs/reference/config/networking/destination-rule/#ConnectionPoolSettings-HTTPSettings
+
+.Virtual Service directing all traffic to the subset named default
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: customers
+spec:
+  hosts:
+    - customers
+  http:
+    - route:
+        - destination:
+            host: customers
+            subset: default
+----
+
+.Command to deploy the fortio application from the manifest in the Istio package
+[,console]
+----
+kubectl apply -f samples/httpbin/sample-client/fortio-deploy.yaml
+----
+
+.Saving the name of the Fortio pod in an environment variable
+[,console]
+----
+export FORTIO_POD=$(kubectl get pods -l app=fortio -o 'jsonpath={.items[0].metadata.name}')
+
+echo $FORTIO_POD
+----
+
+.Invoke the service with 1 connection and 20 requests
+[,console]
+----
+kubectl exec ${FORTIO_POD} -c fortio -- \
+/usr/bin/fortio load -c 1 -qps 0 -n 20 -loglevel Warning \
+http://customers:8081/api/customers
+----
+
+.Invoke the service with 3 concurrent connections
+[,console]
+----
+kubectl exec ${FORTIO_POD} -c fortio -- \
+  /usr/bin/fortio load -c 3 -qps 0 -n 20 -loglevel Warning \
+  http://customers:8081/api/customers
+----
+
+.Query the istio-proxy to investigate how many calls so far have been flagged for circuit breaking
+[,console]
+----
+kubectl exec "$FORTIO_POD" -c istio-proxy -- \
+    pilot-agent request GET stats | \
+    grep "default|customers.default.svc.cluster.local.upstream_rq_pending_overflow:"
+----
+
+.Deployment for the faulty microservice
+[,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: customers
+    version: v2-exception
+  name: customers-v2-exception
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customers
+      version: v2-exception
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: customers
+        version: v2-exception
+    spec:
+      containers:
+        - image: adityasamantlearnings/springboot-customers-basic:0.0.3-exception
+          name: customers
+----
+
+.Destination rule with outlier detection setting
+[,yaml]
+----
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: customers
+spec:
+  host: customers
+  trafficPolicy:
+    outlierDetection:
+      baseEjectionTime: 3m
+      consecutive5xxErrors: 2
+      interval: 1m
+      maxEjectionPercent: 100
+  subsets:
+    - name: default
+      labels:
+        version: v2-exception
+----
+
+.Istio documentation for outlier detection properties
+https://istio.io/latest/docs/reference/config/networking/destination-rule/#OutlierDetection
+
+.Test the outlier detection configuration by calling the customers service using fortio with one concurrent connection (-c 1 ) and send 20 requests (-n 20 )
+[,console]
+----
+kubectl exec ${FORTIO_POD} -c fortio -- \
+  /usr/bin/fortio load -c 1 -qps 0 -n 20 -loglevel Warning \
+  http://customers:8081/api/customers
+----
